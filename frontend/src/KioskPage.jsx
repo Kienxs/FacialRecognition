@@ -80,26 +80,67 @@ export default function KioskPage({ teacher, classInfo, onEndSession, onLogout }
     }, 3000);
   }, []);
 
-  // ── Mock: simulate students checking in every 4–9s ──
+const isProcessing = useRef(false); // Khóa (lock) để tránh gửi request chồng chéo
+
   useEffect(() => {
-    const pending = MOCK_STUDENTS.filter(
-      (s) => !checkins.some((c) => c.mssv === s.mssv)
-    );
-    if (pending.length === 0) return;
+    const captureAndSendFrame = async () => {
+      // 1. Chặn nếu chưa có camera, đang hiện overlay, video chưa load xong, hoặc đang đợi API cũ trả về
+      if (
+        !videoRef.current ||
+        videoRef.current.videoWidth === 0 || 
+        overlayTimer.current ||
+        isProcessing.current
+      ) {
+        return;
+      }
 
-    const delay = 4000 + Math.random() * 5000;
-    const timer = setTimeout(() => {
-      const next = pending[Math.floor(Math.random() * pending.length)];
-      const now = new Date();
-      setCheckins((prev) => [...prev, { ...next, time: now }]);
+      isProcessing.current = true; // Bật khóa luồng
 
-      // TODO: replace mock with real API response
-      // In real flow: capture frame → send to BE → get result → show overlay
-      showCheckInOverlay(next, true);
-    }, delay);
+      const canvas = document.createElement("canvas");
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      
+      const base64Image = canvas.toDataURL("image/jpeg", 0.8);
 
-    return () => clearTimeout(timer);
-  }, [checkins, showCheckInOverlay]);
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/attendance/checkin", {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${teacher.token}`
+          },
+          body: JSON.stringify({ 
+            class_id: classInfo.id, 
+            image_base64: base64Image 
+          }),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          showCheckInOverlay({ name: result.name, mssv: result.mssv }, true);
+          setCheckins((prev) => {
+            if (prev.some((c) => c.mssv === result.mssv)) return prev;
+            return [...prev, { mssv: result.mssv, name: result.name, time: new Date() }];
+          });
+        } else if (result.status === "SPOOF_WARNING") {
+          showCheckInOverlay({ name: "Cảnh báo", mssv: "Gian lận hình ảnh" }, false);
+        } else if (result.status === "UNKNOWN") {
+          // Tuỳ chọn: Có thể hiện overlay báo không nhận diện được
+          // showCheckInOverlay({ name: "Không nhận diện được", mssv: "Vui lòng thử lại" }, false);
+        }
+      } catch (err) {
+        console.error("Lỗi AI Backend:", err);
+      } finally {
+        isProcessing.current = false; // Tắt khóa, cho phép request tiếp theo chạy
+      }
+    };
+
+    const interval = setInterval(captureAndSendFrame, 3000);
+    return () => clearInterval(interval);
+  }, [classInfo.id, teacher.token, showCheckInOverlay]); // Khai báo rõ classInfo.id thay vì classInfo object
 
   // ── Auto-scroll check-in list ──
   useEffect(() => {

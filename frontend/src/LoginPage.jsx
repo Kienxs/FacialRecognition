@@ -1,35 +1,48 @@
 import { useState } from "react";
 
-// Mock accounts — replace with real API when BE is ready
-const DEMO_TEACHERS = [
-  { id: "GV001", name: "Nguyễn Văn An", password: "123456" },
-  { id: "GV002", name: "Trần Thị Bình", password: "123456" },
-];
-
 export default function LoginPage({ onLogin }) {
   const [teacherId, setTeacherId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     setError("");
     setSubmitting(true);
 
-    // TODO: swap this mock with fetch("/api/login", { method: "POST", body: JSON.stringify({ teacherId, password }) })
-    setTimeout(() => {
-      const teacher = DEMO_TEACHERS.find(
-        (t) => t.id === teacherId.trim().toUpperCase() && t.password === password
-      );
+    // Gửi dữ liệu đăng nhập dưới dạng form-urlencoded theo chuẩn FastAPI
+    const formData = new URLSearchParams();
+    formData.append("username", teacherId.trim().toUpperCase());
+    formData.append("password", password);
 
-      if (teacher) {
-        onLogin({ id: teacher.id, name: teacher.name });
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Lưu thông tin và token khi thành công
+        onLogin({ 
+          id: teacherId.trim().toUpperCase(), 
+          name: "Giảng viên", 
+          token: data.access_token 
+        });
       } else {
-        setError("Sai mã giảng viên hoặc mật khẩu.");
+        setError(data.detail || "Sai mã giảng viên hoặc mật khẩu.");
       }
+    } catch (err) {
+      setError("Không thể kết nối đến máy chủ Backend.");
+      console.error(err);
+    } finally {
       setSubmitting(false);
-    }, 600);
+    }
   }
 
   return (
@@ -54,7 +67,7 @@ export default function LoginPage({ onLogin }) {
             <path d="M12 16v-4" />
             <path d="M12 8h.01" />
           </svg>
-          <span>Demo: Mã GV <strong>GV001</strong> — Mật khẩu <strong>123456</strong></span>
+          <span>Lưu ý: Cần Insert một tài khoản vào SQLite trước để test</span>
         </div>
 
         {/* Fields */}
