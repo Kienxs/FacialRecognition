@@ -34,6 +34,8 @@ export default function KioskPage({ teacher, classInfo, onEndSession, onLogout }
   // The overlay result shown on the camera when someone checks in
   const [overlay, setOverlay] = useState(null); // { name, mssv, success }
   const overlayTimer = useRef(null);
+  const [verifyingHint, setVerifyingHint] = useState(null);
+  const hintTimeoutRef = useRef(null);
 
 
 
@@ -71,16 +73,17 @@ export default function KioskPage({ teacher, classInfo, onEndSession, onLogout }
     return () => clearInterval(interval);
   }, []);
 
-  // ── Show overlay for 3 seconds ──
+  // ── Show overlay for 1.8 seconds ──
   const showCheckInOverlay = useCallback((student, success) => {
     if (overlayTimer.current) clearTimeout(overlayTimer.current);
     setOverlay({ ...student, success });
     overlayTimer.current = setTimeout(() => {
       setOverlay(null);
-    }, 3000);
+      overlayTimer.current = null; // Bắt buộc giải phóng để cho phép quét tiếp!
+    }, 1800);
   }, []);
 
-const isProcessing = useRef(false); // Khóa (lock) để tránh gửi request chồng chéo
+  const isProcessing = useRef(false); // Khóa (lock) để tránh gửi request chồng chéo
 
   useEffect(() => {
     const captureAndSendFrame = async () => {
@@ -88,7 +91,7 @@ const isProcessing = useRef(false); // Khóa (lock) để tránh gửi request c
       if (
         !videoRef.current ||
         videoRef.current.videoWidth === 0 || 
-        overlayTimer.current ||
+        overlayTimer.current !== null ||
         isProcessing.current
       ) {
         return;
@@ -96,13 +99,23 @@ const isProcessing = useRef(false); // Khóa (lock) để tránh gửi request c
 
       isProcessing.current = true; // Bật khóa luồng
 
+      // Tối ưu kích thước ảnh (rộng tối đa 640px) để gửi nhanh và AI nhận diện dưới 0.2s
+      const video = videoRef.current;
+      const maxDim = 640;
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+      if (width > maxDim) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      }
+
       const canvas = document.createElement("canvas");
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, width, height);
       
-      const base64Image = canvas.toDataURL("image/jpeg", 0.8);
+      const base64Image = canvas.toDataURL("image/jpeg", 0.75);
 
       try {
         const response = await fetch("http://127.0.0.1:8000/api/attendance/checkin", {
@@ -120,16 +133,31 @@ const isProcessing = useRef(false); // Khóa (lock) để tránh gửi request c
         const result = await response.json();
 
         if (result.success) {
+          setVerifyingHint(null);
           showCheckInOverlay({ name: result.name, mssv: result.mssv }, true);
           setCheckins((prev) => {
             if (prev.some((c) => c.mssv === result.mssv)) return prev;
             return [...prev, { mssv: result.mssv, name: result.name, time: new Date() }];
           });
+        } else if (result.status === "VERIFYING") {
+          // Hiện gợi ý nhẹ nhàng cho người dùng tự nhiên chớp mắt
+          setVerifyingHint("👁️ Vui lòng nhìn tự nhiên hoặc chớp mắt");
+          if (hintTimeoutRef.current) clearTimeout(hintTimeoutRef.current);
+          hintTimeoutRef.current = setTimeout(() => setVerifyingHint(null), 1200);
         } else if (result.status === "SPOOF_WARNING") {
-          showCheckInOverlay({ name: "Cảnh báo", mssv: "Gian lận hình ảnh" }, false);
+          setVerifyingHint(null);
+          showCheckInOverlay({ 
+            name: "CẢNH BÁO GIAN LẬN", 
+            mssv: result.detail || "Hình ảnh không hợp lệ. Vui lòng xác thực người thật." 
+          }, false);
         } else if (result.status === "UNKNOWN") {
-          // Tuỳ chọn: Có thể hiện overlay báo không nhận diện được
-          // showCheckInOverlay({ name: "Không nhận diện được", mssv: "Vui lòng thử lại" }, false);
+          setVerifyingHint(null);
+          if (result.detail && !result.detail.includes("Không phát hiện")) {
+            showCheckInOverlay({ 
+              name: "Chưa nhận diện được", 
+              mssv: "Khuôn mặt chưa có trong dữ liệu" 
+            }, false);
+          }
         }
       } catch (err) {
         console.error("Lỗi AI Backend:", err);
@@ -138,7 +166,7 @@ const isProcessing = useRef(false); // Khóa (lock) để tránh gửi request c
       }
     };
 
-    const interval = setInterval(captureAndSendFrame, 3000);
+    const interval = setInterval(captureAndSendFrame, 450);
     return () => clearInterval(interval);
   }, [classInfo.id, teacher.token, showCheckInOverlay]); // Khai báo rõ classInfo.id thay vì classInfo object
 
@@ -247,12 +275,15 @@ const isProcessing = useRef(false); // Khóa (lock) để tránh gửi request c
 
             {/* Camera instruction */}
             {!overlay && !cameraError && (
-              <div style={styles.cameraHint}>
+              <div style={{
+                ...styles.cameraHint,
+                ...(verifyingHint ? { background: "rgba(16, 185, 129, 0.85)", borderColor: "rgba(52, 211, 153, 0.6)" } : {})
+              }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                   <circle cx="12" cy="12" r="3" />
                 </svg>
-                Nhìn vào camera để điểm danh
+                {verifyingHint || "Nhìn vào camera để điểm danh"}
               </div>
             )}
           </div>
