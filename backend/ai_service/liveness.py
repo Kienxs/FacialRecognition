@@ -66,7 +66,6 @@ def analyze_spoof_features(face_crop_rgb):
 
     # Cắt vùng lõi da mặt trung tâm (loại bỏ rìa tóc đen và nền tường)
     roi_rgb = resized_rgb[20:108, 20:108]
-    roi_gray = resized_gray[20:108, 20:108]
 
     # 1. 2D FFT tìm Moiré Pattern
     f = np.fft.fft2(resized_gray.astype(np.float32))
@@ -100,14 +99,14 @@ def analyze_spoof_features(face_crop_rgb):
     risk_points = 0.0
 
     # Ngưỡng Moiré màn hình
-    if peak_ratio > 3.75:
+    if peak_ratio > 3.55:
         reasons.append(f"Phát hiện lưới pixel / Moiré màn hình điện thoại (Moiré: {peak_ratio:.2f})")
-        risk_points += 1.0 if peak_ratio > 3.50 else 0.65
+        risk_points += 1.0 if peak_ratio > 3.75 else 0.70
 
-    # Ngưỡng chói lóa mặt kính
-    if glare_ratio > 0.035:
+    # Ngưỡng chói lóa mặt kính (tránh gọng kính cận của người thật)
+    if glare_ratio > 0.055:
         reasons.append("Phát hiện vệt phản quang mặt kính màn hình")
-        risk_points += 1.0 if glare_ratio > 0.050 else 0.70
+        risk_points += 1.0 if glare_ratio > 0.080 else 0.70
 
     # Ngưỡng mất kết cấu da (chỉ phạt nặng khi ảnh cực mờ < 12.0)
     if laplacian_var < 12.0:
@@ -115,7 +114,7 @@ def analyze_spoof_features(face_crop_rgb):
         risk_points += 0.80
 
     # Ngưỡng phát quang màn hình LED (kênh Blue cao bất thường so với Red)
-    if rb_ratio < 1.06:
+    if rb_ratio < 1.05:
         reasons.append("Phát hiện ánh sáng phát quang màn hình điện tử")
         risk_points += 1.0 if rb_ratio < 1.02 else 0.65
 

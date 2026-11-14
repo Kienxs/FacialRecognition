@@ -36,6 +36,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
+*.db
 *.db-journal
 *.db-wal
 *.db-shm

@@ -6,7 +6,7 @@ import numpy as np
 _SESSION_CACHE = {}
 
 def compute_ear(eye_points):
-    """Tính Eye Aspect Ratio (EAR) từ 6 điểm mắt"""
+    """Tính Eye Aspect Ratio (EAR) cho 1 bên mắt (6 điểm landmarks)"""
     if len(eye_points) < 6:
         return 0.3
     p1, p2, p3, p4, p5, p6 = eye_points[:6]
@@ -53,32 +53,31 @@ def compute_non_rigid_residual(pts_ref: np.ndarray, pts_cur: np.ndarray) -> floa
     Tính sai số biến dạng 3D phi tuyến (Non-Rigid / 3D Parallax Residual):
     - Khớp phép biến đổi phẳng 2D Affine: pts_cur ≈ [pts_ref, 1] @ M
     - Ảnh trên điện thoại xoay/nghiêng/dịch chuyển là mặt phẳng 2D cứng -> Residual rất nhỏ (< 0.85 px).
-    - Khuôn mặt 3D thật cử động cơ mặt hoặc xoay đầu có độ nhô chóp mũi & biến dạng môi -> Residual lớn (>= 1.20 px).
+    - Khuôn mặt 3D thật cử động cơ mặt hoặc xoay đầu có độ nhô mũi/mắt/cằm lệch khỏi mặt phẳng -> Residual cao (> 1.20 px).
     """
-    if pts_ref.shape != pts_cur.shape or len(pts_ref) < 50:
+    try:
+        n = pts_ref.shape[0]
+        A = np.hstack([pts_ref, np.ones((n, 1), dtype=np.float32)])
+        M, _, _, _ = np.linalg.lstsq(A, pts_cur, rcond=None)
+        pts_pred = A @ M
+        residuals = np.linalg.norm(pts_cur - pts_pred, axis=1)
+        return float(np.mean(residuals))
+    except Exception:
         return 0.0
-    ones = np.ones((pts_ref.shape[0], 1), dtype=np.float32)
-    A = np.hstack([pts_ref, ones])
-    M, _, _, _ = np.linalg.lstsq(A, pts_cur, rcond=None)
-    projected = A @ M
-    errors = np.linalg.norm(pts_cur - projected, axis=1)
-    return float(np.mean(errors))
 
 def evaluate_motion_liveness(mssv: str, landmarks):
     """
-    Kiểm định Sinh trắc học Động lực học Kép (Chớp mắt tự nhiên + Biến dạng 3D Parallax):
-    1. Chấp nhận CONFIRMED_LIVE khi:
-       - Phát hiện chu kỳ chớp mắt thật (EAR biến thiên >= 0.038 và giảm >= 15% so với mức mở mắt).
-       - Hoặc phát hiện cử động biểu cảm/thị sai 3D thực thụ (Non-rigid residual >= 1.20 px).
-    2. Chặn CONFIRMED_SPOOF khi:
-       - Điện thoại xoay/nghiêng phẳng 2D (Dịch chuyển lớn nhưng sai số phẳng 2D < 0.85 px và không chớp mắt sau >= 1.2s).
-       - Hoặc ảnh tĩnh hoàn toàn không có chớp mắt/biến dạng 3D sau thời gian theo dõi.
+    Kiểm định chuyển động sinh trắc học theo chuỗi khung hình:
+    1. Chớp mắt tự nhiên (Blink EAR drop).
+    2. Cử động biểu cảm khuôn mặt 3D (Non-rigid parallax).
+    3. Chặn đứng ảnh chụp phẳng 2D hoặc điện thoại đổi góc (Planar 2D affine).
+    4. Chặn đứng ảnh tĩnh hoàn toàn bất động qua thời gian.
     """
     now = time.time()
 
-    # Dọn dẹp cache các phiên cũ quá 8 giây
-    expired_keys = [k for k, v in _SESSION_CACHE.items() if now - v['last_seen'] > 8.0]
-    for k in expired_keys:
+    # Dọn dẹp cache các phiên đã quá 8 giây không có frame mới
+    expired = [k for k, v in _SESSION_CACHE.items() if now - v.get('last_seen', now) > 8.0]
+    for k in expired:
         del _SESSION_CACHE[k]
 
     pts, ear = extract_flat_points(landmarks)
@@ -89,17 +88,20 @@ def evaluate_motion_liveness(mssv: str, landmarks):
         _SESSION_CACHE[mssv] = {
             'start_time': now,
             'last_seen': now,
-            'history': [(pts, ear, now)]
+            'history': []
         }
-        return "VERIFYING", "Vui lòng nhìn tự nhiên và chớp mắt trước camera..."
 
     session = _SESSION_CACHE[mssv]
     session['last_seen'] = now
-    history = session['history']
-    history.append((pts, ear, now))
+    session['history'].append((pts, ear, now))
 
-    if len(history) > 12:
-        history.pop(0)
+    # Giữ tối đa 10 frame gần nhất
+    if len(session['history']) > 10:
+        session['history'] = session['history'][-10:]
+
+    history = session['history']
+    if len(history) < 2:
+        return "VERIFYING", "Vui lòng nhìn tự nhiên và chớp mắt trước camera..."
 
     ears = [h[1] for h in history]
     min_ear = min(ears)
@@ -125,12 +127,12 @@ def evaluate_motion_liveness(mssv: str, landmarks):
     )
 
     # ── TRƯỜNG HỢP 1: PHÁT HIỆN CHỚP MẮT THẬT ──
-    if (ear_range >= 0.038 and min_ear < 0.245) or (ear_range >= 0.035 and ear_drop_ratio >= 0.15):
+    if (ear_range >= 0.028 and min_ear < 0.25) or (ear_range >= 0.035 and ear_drop_ratio >= 0.12):
         del _SESSION_CACHE[mssv]
         print(f"[MOTION LIVENESS] >> BLINK CONFIRMED! Range: {ear_range:.3f} -> CONFIRMED LIVE")
         return "CONFIRMED_LIVE", "Xác nhận người thật (Chớp mắt tự nhiên)"
 
-    # ── TRƯỜNG HỢP 2: PHÁT HIỆN CỬ ĐỘNG CƠ MẶT / THỊ SAI 3D THẬT (KHÔNG PHẢI XOAY PHẲNG 2D) ──
+    # ── TRƯỜNG HỢP 2: PHÁT HIỆN CỬ ĐỘNG CƠ MẶT / THỊ SAI 3D THẬT ──
     if max_residual >= 1.20 and total_displacement < 45.0:
         del _SESSION_CACHE[mssv]
         print(f"[MOTION LIVENESS] >> 3D PARALLAX CONFIRMED! Residual: {max_residual:.2f}px -> CONFIRMED LIVE")
@@ -138,13 +140,13 @@ def evaluate_motion_liveness(mssv: str, landmarks):
 
     # ── TRƯỜNG HỢP 3: PHÁT HIỆN GIAN LẬN XOAY/NGHIÊNG ĐIỆN THOẠI PHẲNG 2D ──
     # Có dịch chuyển lớn (>= 4px) nhưng toàn bộ điểm mốc biến đổi cứng trên mặt phẳng 2D (max_residual < 0.85px)
-    if len(history) >= 3 and elapsed >= 1.2 and total_displacement >= 4.0 and max_residual < 0.85 and ear_range < 0.025:
+    if len(history) >= 3 and elapsed >= 1.2 and total_displacement >= 4.0 and max_residual < 0.85 and ear_range < 0.022:
         del _SESSION_CACHE[mssv]
         print(f"[MOTION LIVENESS] >> 2D PLANAR SPOOF DETECTED! Move={total_displacement:.1f}px, Residual={max_residual:.2f}px -> CONFIRMED SPOOF")
         return "CONFIRMED_SPOOF", "Phát hiện hình ảnh phẳng 2D đổi góc (Không có cấu trúc 3D và chớp mắt)."
 
     # ── TRƯỜNG HỢP 4: ẢNH TĨNH BẤT ĐỘNG HOÀN TOÀN QUA THỜI GIAN ──
-    if len(history) >= 5 and elapsed >= 2.8:
+    if len(history) >= 8 and elapsed >= 3.5 and ear_range < 0.010 and total_displacement < 1.5:
         del _SESSION_CACHE[mssv]
         print(f"[MOTION LIVENESS] >> STATIC SPOOF DETECTED over {elapsed:.1f}s -> CONFIRMED SPOOF")
         return "CONFIRMED_SPOOF", "Phát hiện hình ảnh tĩnh không hợp lệ (Không có cử động sống)."

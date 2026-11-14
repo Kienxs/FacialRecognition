@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 # Ngưỡng khoảng cách Euclidean tối ưu cho khuôn mặt người Việt (dlib 128-d)
-FACE_MATCH_THRESHOLD = 0.48
+FACE_MATCH_THRESHOLD = 0.50
 MAX_EMBEDDINGS_PER_STUDENT = 3
 
 class TeacherLoginRequest(BaseModel):
@@ -206,7 +206,7 @@ def checkin(
     if status_code != "SUCCESS" or encoding_list is None:
         return {
             "success": False,
-            "status": status_code, # Trả về đúng "NO_FACE" hoặc "MULTIPLE_FACES"
+            "status": status_code,
             "detail": "Không phát hiện khuôn mặt hợp lệ"
         }
 
