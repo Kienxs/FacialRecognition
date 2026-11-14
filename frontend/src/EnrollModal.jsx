@@ -56,7 +56,7 @@ export default function EnrollModal({ teacher, onClose, onSuccess }) {
     const base64Image = canvas.toDataURL("image/jpeg", 0.85);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/students/enroll", {
+      const response = await fetch("/api/students/enroll", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -85,7 +85,7 @@ export default function EnrollModal({ teacher, onClose, onSuccess }) {
       }
     } catch (err) {
       console.error(err);
-      setMessage({ type: "error", text: "Không thể kết nối đến máy chủ AI Backend." });
+      setMessage({ type: "error", text: `Lỗi kết nối AI Backend: ${err.message || err}` });
     } finally {
       setLoading(false);
     }

@@ -14,7 +14,7 @@ export default function StudentManageModal({ teacher, onClose, onRefresh }) {
   async function fetchStudents() {
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/students", {
+      const res = await fetch("/api/students", {
         headers: {
           Authorization: `Bearer ${teacher.token}`,
         },
@@ -40,7 +40,7 @@ export default function StudentManageModal({ teacher, onClose, onRefresh }) {
     setMessage(null);
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/students/${mssv}/face`, {
+      const res = await fetch(`/api/students/${mssv}/face`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${teacher.token}`,

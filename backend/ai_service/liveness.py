@@ -94,20 +94,21 @@ def analyze_spoof_features(face_crop_rgb):
     
     reasons = []
     # 1. Phát hiện màn hình điện thoại / máy tính qua vân Moiré tần số cao
-    # Theo dữ liệu thực nghiệm: Người thật ~ 2.9 - 3.1, Màn hình điện thoại ~ 3.4 - 3.8
-    if peak_ratio > 3.30:
+    # Người thật ~ 2.8 - 3.2, Màn hình điện thoại/LCD ~ 3.5 - 4.2
+    if peak_ratio > 3.45:
         reasons.append(f"Phát hiện lưới pixel / Moiré màn hình điện thoại (Moiré: {peak_ratio:.2f})")
         
     # 2. Phát hiện phản quang chói sáng từ mặt kính điện thoại / ảnh ép bóng
-    if glare_ratio > 0.030:
+    # Ngưỡng 0.080 (8% diện tích) để tránh chặn nhầm ánh sáng tự nhiên phản xạ từ gọng kính cận / trán người thật
+    if glare_ratio > 0.085:
         reasons.append("Phát hiện vệt phản quang mặt kính màn hình")
         
     # 3. Phát hiện ảnh in phẳng / ảnh quá mờ
-    if laplacian_var < 18.0:
+    if laplacian_var < 15.0:
         reasons.append("Ảnh phẳng mất kết cấu da tự nhiên")
         
     # 4. Phát hiện ánh sáng phát quang đèn LED màn hình
-    if rb_ratio < 1.10:
+    if rb_ratio < 1.05:
         reasons.append("Phát hiện ánh sáng phát quang màn hình điện tử")
         
     is_spoof = len(reasons) > 0

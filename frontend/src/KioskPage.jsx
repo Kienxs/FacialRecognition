@@ -36,6 +36,41 @@ export default function KioskPage({ teacher, classInfo, onEndSession, onLogout }
   const overlayTimer = useRef(null);
   const [verifyingHint, setVerifyingHint] = useState(null);
   const hintTimeoutRef = useRef(null);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+
+  // Xuất file CSV/Excel UTF-8 có BOM
+  function exportToExcel() {
+    const todayStr = new Date().toLocaleDateString("vi-VN").replace(/\//g, "-");
+    const headers = ["STT", "Mã số sinh viên", "Họ và tên", "Thời gian điểm danh", "Trạng thái"];
+    const rows = checkins.map((c, index) => [
+      index + 1,
+      `="${c.mssv}"`, // Format dạng text trong Excel tránh mất số 0
+      `"${c.name.replace(/"/g, '""')}"`,
+      formatTime(new Date(c.time)),
+      "Có mặt"
+    ]);
+
+    const csvContent = "\uFEFF" + [
+      [`DANH SÁCH ĐIỂM DANH LỚP: ${classInfo.id} - ${classInfo.name}`],
+      [`Ngày: ${todayStr}`, `Phòng: ${classInfo.room}`, `Giảng viên: ${teacher.name}`],
+      [],
+      headers,
+      ...rows,
+      [],
+      ["Tổng số điểm danh:", checkins.length]
+    ].map(e => e.join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `DiemDanh_${classInfo.id}_${todayStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    onEndSession();
+  }
 
 
 
@@ -118,7 +153,7 @@ export default function KioskPage({ teacher, classInfo, onEndSession, onLogout }
       const base64Image = canvas.toDataURL("image/jpeg", 0.75);
 
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/attendance/checkin", {
+        const response = await fetch("/api/attendance/checkin", {
           method: "POST",
           headers: { 
             "Content-Type": "application/json",
@@ -211,7 +246,7 @@ export default function KioskPage({ teacher, classInfo, onEndSession, onLogout }
             type="button"
             className="btn btn-danger"
             style={styles.stopBtn}
-            onClick={onEndSession}
+            onClick={() => setShowSummaryModal(true)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <rect x="6" y="6" width="12" height="12" rx="2" />
@@ -366,6 +401,75 @@ export default function KioskPage({ teacher, classInfo, onEndSession, onLogout }
           Đăng xuất
         </button>
       </footer>
+
+      {/* ── Summary & Export Modal khi dừng điểm danh ── */}
+      {showSummaryModal && (
+        <div style={styles.modalBackdrop}>
+          <div className="card fade-in" style={styles.modalCard}>
+            <div style={styles.modalHeader}>
+              <div style={styles.modalIconSuccess}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+              <h3 style={styles.modalTitle}>Kết thúc phiên điểm danh</h3>
+              <p style={styles.modalSubtitle}>
+                Lớp: <strong>{classInfo.id} — {classInfo.name}</strong>
+              </p>
+            </div>
+
+            <div style={styles.modalBody}>
+              <div style={styles.summaryGrid}>
+                <div style={styles.summaryBox}>
+                  <span style={styles.summaryLabel}>Có mặt</span>
+                  <span style={{ ...styles.summaryValue, color: "var(--success)" }}>{checkedIn}</span>
+                </div>
+                <div style={styles.summaryBox}>
+                  <span style={styles.summaryLabel}>Vắng mặt</span>
+                  <span style={{ ...styles.summaryValue, color: "var(--danger)" }}>{Math.max(0, totalStudents - checkedIn)}</span>
+                </div>
+                <div style={styles.summaryBox}>
+                  <span style={styles.summaryLabel}>Sĩ số lớp</span>
+                  <span style={styles.summaryValue}>{totalStudents}</span>
+                </div>
+              </div>
+
+              <p style={styles.modalPromptText}>
+                Bạn có muốn xuất danh sách sinh viên đã điểm danh hôm nay ra file Excel (.csv) không?
+              </p>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={styles.modalBtnCancel}
+                onClick={() => {
+                  setShowSummaryModal(false);
+                  onEndSession();
+                }}
+              >
+                Bỏ qua
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={styles.modalBtnExport}
+                onClick={exportToExcel}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Xuất Excel (.csv)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -697,5 +801,113 @@ const styles = {
     padding: "4px 8px",
     textDecoration: "underline",
     transition: "color 150ms ease",
+  },
+
+  // ── Modal kết thúc & xuất Excel ──
+  modalBackdrop: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backdropFilter: "blur(4px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    padding: 16,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 440,
+    background: "var(--bg-card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-lg, 16px)",
+    padding: 24,
+    boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4)",
+    textAlign: "center",
+  },
+  modalHeader: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  modalIconSuccess: {
+    width: 56,
+    height: 56,
+    borderRadius: "50%",
+    background: "rgba(16, 185, 129, 0.15)",
+    color: "var(--success)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: "var(--text-primary)",
+    margin: "0 0 4px 0",
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "var(--text-muted)",
+    margin: 0,
+  },
+  modalBody: {
+    marginBottom: 24,
+  },
+  summaryGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: 8,
+    background: "var(--bg-input)",
+    padding: "12px 8px",
+    borderRadius: "var(--radius-md, 10px)",
+    marginBottom: 16,
+  },
+  summaryBox: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  summaryLabel: {
+    fontSize: 11,
+    color: "var(--text-muted)",
+    marginBottom: 4,
+    textTransform: "uppercase",
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: 700,
+    color: "var(--text-primary)",
+  },
+  modalPromptText: {
+    fontSize: 14,
+    color: "var(--text-secondary)",
+    lineHeight: 1.5,
+    margin: 0,
+  },
+  modalFooter: {
+    display: "flex",
+    gap: 12,
+    justifyContent: "center",
+  },
+  modalBtnCancel: {
+    flex: 1,
+    padding: "10px 16px",
+    fontWeight: 600,
+  },
+  modalBtnExport: {
+    flex: 1.2,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: "10px 16px",
+    fontWeight: 600,
+    background: "var(--accent)",
   },
 };

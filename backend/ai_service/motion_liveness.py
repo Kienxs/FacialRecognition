@@ -100,19 +100,25 @@ def evaluate_motion_liveness(mssv: str, landmarks):
     
     print(f"[MOTION LIVENESS] MSSV: {mssv} | Frames: {len(history)} | EAR: {ear:.3f} | Range: {ear_range:.3f} (min={min_ear:.3f}, max={max_ear:.3f}) | Move: {displacement:.1f}px | Time: {elapsed:.1f}s")
     
-    # ── ĐIỀU KIỆN TIÊN QUYẾT DUY NHẤT ĐỂ DUYỆT ĐIỂM DANH: CHỚP MẮT TỰ NHIÊN ──
-    # Mắt mở bình thường: EAR ~ 0.26 - 0.35. Khi chớp mắt nhắm lại: EAR < 0.20 -> ear_range >= 0.040
-    if ear_range >= 0.040 and min_ear < 0.24:
+    # ── ĐIỀU KIỆN DUYỆT ĐIỂM DANH: CHỚP MẮT HOẶC CỬ ĐỘNG TỰ NHIÊN ──
+    # 1. Chớp mắt rõ rệt: (ear_range >= 0.025 khi min_ear < 0.26) hoặc ear_range >= 0.035
+    is_blink = (ear_range >= 0.025 and min_ear < 0.26) or (ear_range >= 0.035)
+
+    # 2. Cử động vi mô người thật (người thật đứng trước camera luôn có vi rung cơ mặt > 3px qua 3 frames)
+    # Ảnh tĩnh 100% sẽ có displacement = 0 hoặc nhúc nhích cả điện thoại
+    has_natural_motion = len(history) >= 3 and displacement > 2.0 and ear_range >= 0.015
+
+    if is_blink or has_natural_motion:
         del _SESSION_CACHE[mssv]
-        print(f"[MOTION LIVENESS] >> BLINK CONFIRMED! Range: {ear_range:.3f} (min={min_ear:.3f}) -> CONFIRMED LIVE")
-        return "CONFIRMED_LIVE", "Xác nhận người thật (Chớp mắt tự nhiên)"
+        print(f"[MOTION LIVENESS] >> VERIFIED LIVE! Blink: {is_blink} (range={ear_range:.3f}, min={min_ear:.3f}) | Move: {displacement:.1f}px -> CONFIRMED LIVE")
+        return "CONFIRMED_LIVE", "Xác nhận người thật (Cử động tự nhiên)"
         
-    # ── PHÁT HIỆN GIAN LẬN: ẢNH TĨNH / ĐIỆN THOẠI ĐỔI GÓC KHÔNG THỂ CHỚP MẮT ──
-    # Nếu đã theo dõi từ 4 frame trở lên HOẶC thời gian >= 1.8 giây mà hoàn toàn không chớp mắt (ear_range < 0.025)
-    if (len(history) >= 3 and elapsed >= 1.2) or elapsed >= 1.8:
+    # ── PHÁT HIỆN GIAN LẬN: ẢNH TĨNH HOÀN TOÀN KHÔNG CÓ CỬ ĐỘNG ──
+    # Chỉ cảnh báo khi đã theo dõi đủ lâu (>= 5.0 giây) và hoàn toàn bất động
+    if (len(history) >= 10 and elapsed >= 4.0 and ear_range < 0.010 and displacement < 1.0) or elapsed >= 5.5:
         del _SESSION_CACHE[mssv]
-        print(f"[MOTION LIVENESS] >> SPOOF DETECTED: No True Blink over {elapsed:.1f}s (Range={ear_range:.3f}) -> CONFIRMED SPOOF")
-        return "CONFIRMED_SPOOF", "Phát hiện hình ảnh không hợp lệ (Không có cử động chớp mắt)."
+        print(f"[MOTION LIVENESS] >> SPOOF DETECTED: No Motion/Blink over {elapsed:.1f}s (Range={ear_range:.3f}, Move={displacement:.1f}px) -> CONFIRMED SPOOF")
+        return "CONFIRMED_SPOOF", "Phát hiện hình ảnh không hợp lệ (Không có cử động tự nhiên)."
         
     # Đang tiếp tục theo dõi cử động chớp mắt
     return "VERIFYING", "Vui lòng chớp mắt tự nhiên trước camera..."
