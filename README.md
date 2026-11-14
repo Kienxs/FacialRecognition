@@ -194,7 +194,7 @@ npm install
 
 ### 3. Khởi chạy ứng dụng
 
-#### ⚡ Cách 1: Khởi chạy nhanh 1 chạm với `run_all.py` (Khuyến nghị)
+#### ⚡ Cách 1: Khởi chạy nhanh 1 chạm với `run_all.py` 
 
 Tại thư mục gốc dự án (`FacialRecognition/`), bạn chỉ cần chạy một lệnh duy nhất:
 
