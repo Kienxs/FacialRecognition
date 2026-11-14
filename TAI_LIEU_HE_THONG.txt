@@ -1,0 +1,204 @@
+================================================================================
+TÀI LIỆU KỸ THUẬT VÀ KIẾN TRÚC HỆ THỐNG
+HỆ THỐNG ĐIỂM DANH NHẬN DIỆN KHUÔN MẶT THỜI GIAN THỰC (FACIAL RECOGNITION ATTENDANCE)
+================================================================================
+
+1. TỔNG QUAN DỰ ÁN
+--------------------------------------------------------------------------------
+Hệ thống Điểm danh Nhận diện Khuôn mặt là giải pháp ứng dụng công nghệ Thị giác
+máy tính (Computer Vision) kết hợp Trí tuệ nhân tạo (AI/Deep Learning) để tự động
+hóa quy trình điểm danh sinh viên trong lớp học.
+
+Hệ thống hoạt động theo mô hình Client-Server:
+- Kiosk Điểm danh (Frontend): Chạy trên trình duyệt đặt tại cửa phòng học, liên tục
+  thu thập luồng hình ảnh từ Webcam với tần suất 450ms/lần.
+- Máy chủ AI & Backend: Tiếp nhận ảnh, thực hiện tiền xử lý ánh sáng (CLAHE),
+  phát hiện khuôn mặt, kiểm định chống giả mạo đa tầng (Anti-Spoofing: Quang học + 
+  Động lực học), so khớp khuôn mặt với cơ sở dữ liệu và ghi nhận kết quả điểm danh.
+- Cơ sở dữ liệu: Lưu trữ thông tin giảng viên, lớp học, sinh viên, các vector
+  đặc trưng khuôn mặt 128 chiều và lịch sử điểm danh với cơ chế chống trùng lặp.
+
+
+2. CÔNG NGHỆ SỬ DỤNG (TECH STACK)
+--------------------------------------------------------------------------------
+A. FRONTEND (Giao diện Kiosk & Quản trị)
+- Framework: React 19 (react, react-dom 19.2.x).
+- Build Tool / Dev Server: Vite 8.
+- Linter: Oxlint (Rust-based linter siêu nhanh).
+- Web APIs:
+  + navigator.mediaDevices.getUserMedia: Truy cập trực tiếp Camera/Webcam.
+  + HTML5 <canvas>: Chụp frame video thời gian thực, nén thành JPEG Base64
+    (giới hạn chiều rộng tối đa 640px để gửi nhanh qua mạng, độ trễ < 200ms).
+  + sessionStorage: Lưu trữ JWT Bearer Token và phiên làm việc.
+- Giao diện: Thiết kế CSS thuần hiện đại (Pure CSS / CSS Variables / Dark Theme).
+
+B. BACKEND (API & Nghiệp vụ)
+- Ngôn ngữ: Python 3.11 / 3.12.
+- Web Framework: FastAPI (Asynchronous web framework).
+- Web Server: Uvicorn (ASGI server chạy cổng 8000).
+- ORM: SQLAlchemy 2.x quản lý kết nối và phiên làm việc SQLite.
+- Bảo mật & Xác thực:
+  + bcrypt: Băm mật khẩu giảng viên kèm chuỗi ngẫu nhiên (salt).
+  + python-jose: Cấp phát và xác thực JSON Web Token (JWT) thuật toán HS256,
+    thời hạn 120 phút.
+  + FastAPI OAuth2PasswordBearer: Bảo vệ các API điểm danh, đăng ký, xóa dữ liệu.
+- Data Validation: Pydantic Schemas.
+
+C. AI & THỊ GIÁC MÁY TÍNH (Computer Vision & Anti-Spoofing)
+- OpenCV (cv2):
+  + Xử lý ảnh, chuyển đổi hệ màu BGR, RGB, LAB, Grayscale.
+  + Thuật toán CLAHE (Contrast Limited Adaptive Histogram Equalization) trên kênh
+    sáng L: tự động cân bằng sáng cục bộ, ổn định nhận diện khi phòng học thiếu sáng
+    hoặc ngược sáng.
+- face_recognition & dlib:
+  + HOG Face Detector đa tầng: Quét trước ở kích thước thu nhỏ 0.5x, fallback lên 
+    ảnh gốc 1.0x khi người đứng xa.
+  + 68 Facial Landmarks: Trích xuất 68 điểm mốc giải phẫu trên mặt.
+  + 128-d Face Embeddings: Trích xuất vector đặc trưng 128 số thực.
+  + Euclidean Distance (face_distance): So sánh vector với ngưỡng FACE_MATCH_THRESHOLD = 0.48.
+- PyTorch (torch, torchvision):
+  + Mạng nơ-ron tích chập tự xây dựng LivenessCNN (3 tầng Conv2D + MaxPool + Dropout + FC)
+    để phân loại ảnh Thật (Real) vs Giả mạo (Spoof).
+- Cơ chế Chống Giả Mạo Đa Tầng (Dual-layer Anti-Spoofing):
+  + Tầng 1 - Quang học vật lý (Optical):
+    * 2D FFT: Phân tích tần số cao phát hiện vân lưới pixel (vân Moiré màn hình).
+    * Phản quang mặt kính (Specular Glare): Đo vệt sáng chói lóa trên kính màn hình.
+    * Laplacian Sharpness: Đo phương sai độ sắc nét, phát hiện ảnh in giấy mờ phẳng.
+    * Red/Blue Ratio (R/B): Phát hiện ánh sáng xanh phát quang từ đèn nền màn hình LED.
+  + Tầng 2 - Động lực học & Thị sai 3D (Motion & 3D Parallax):
+    * EAR (Eye Aspect Ratio): Tính tỷ lệ mở mắt từ 6 điểm mốc; phát hiện nhịp chớp
+      mắt tự nhiên (CONFIRMED_LIVE).
+    * Non-Rigid / 3D Parallax Residual: Khớp phép biến đổi phẳng 2D Affine qua thuật
+      toán bình phương tối thiểu. Nếu cầm điện thoại lắc qua lại trên mặt phẳng cứng 2D
+      (sai số phẳng < 0.85px), hệ thống chặn ngay dạng tấn công 2D Planar Spoof. Nếu có
+      độ nhô mũi và cử động 3D (sai số >= 1.20px) -> Xác nhận người thật.
+
+
+3. LUỒNG DỮ LIỆU VÀ QUY TRÌNH HOẠT ĐỘNG (FLOW)
+--------------------------------------------------------------------------------
+A. Khởi động hệ thống (run_all.py):
+   1. Chạy seed.py: Tạo sẵn tài khoản Giảng viên GV001 (pass: 123456), lớp CS101, 
+      và danh sách 8 sinh viên mẫu.
+   2. Chạy đồng thời FastAPI (cổng 8000) và React Vite (cổng 5173).
+   3. Tự động mở trình duyệt tại http://localhost:5173.
+
+B. Luồng Đăng nhập (Authentication Flow):
+   1. Giảng viên nhập ID và Mật khẩu tại LoginPage.
+   2. Gửi POST /api/auth/login -> Backend xác thực bcrypt -> Trả về JWT Token.
+   3. Frontend lưu Token vào sessionStorage -> Chuyển vào Dashboard.
+
+C. Luồng Đăng ký khuôn mặt sinh viên (Enrollment Flow):
+   1. Giảng viên mở modal "Đăng ký khuôn mặt mới" và nhập MSSV, tên.
+   2. Camera chụp ảnh -> Gửi POST /api/students/enroll.
+   3. Backend chạy CLAHE, HOG detector (num_jitters=2), kiểm tra liveness cơ bản.
+   4. Trích xuất vector 128 chiều và lưu vào bảng face_embeddings (tối đa 3 vector/sinh viên).
+
+D. Luồng Điểm danh Kiosk thời gian thực (Real-time Kiosk Check-in Flow):
+   1. KioskPage lấy frame từ webcam mỗi 450ms (có khóa isProcessing chống nghẽn).
+   2. Canvas nén ảnh thành JPEG Base64 (width tối đa 640px).
+   3. Gửi POST /api/attendance/checkin kèm class_id và JWT Token.
+   4. Backend xử lý qua 5 bước:
+      - Bước 1: Tiền xử lý ảnh (CLAHE, HOG). Báo NO_FACE hoặc MULTIPLE_FACES nếu không hợp lệ.
+      - Bước 2: Kiểm tra liveness quang học (FFT Moiré, phản quang, R/B ratio, LivenessCNN).
+        Nếu phát hiện gian lận màn hình -> Trả về SPOOF_WARNING.
+      - Bước 3: So khớp khuôn mặt (Face Matching). Tính khoảng cách Euclidean với các vector
+        trong database. Nếu min_dist > 0.48 -> Trả về UNKNOWN.
+      - Bước 4: Kiểm tra động lực học (Motion Liveness). Lưu vết Landmarks vào RAM Cache:
+        + Nếu chớp mắt (EAR drop >= 15%) hoặc có cử động 3D -> CONFIRMED_LIVE.
+        + Nếu điện thoại nghiêng phẳng 2D hoặc ảnh tĩnh bất động -> CONFIRMED_SPOOF.
+        + Nếu đang trong quá trình theo dõi -> Trả về VERIFYING ("Vui lòng chớp mắt").
+      - Bước 5: Ghi nhận điểm danh vào bảng attendance_records nếu sinh viên chưa điểm danh
+        hôm nay trong lớp này.
+   5. Frontend nhận kết quả: Hiển thị khung xanh lá thành công hoặc cảnh báo đỏ gian lận.
+
+
+4. THIẾT KẾ CƠ SỞ DỮ LIỆU (DATABASE ARCHITECTURE)
+--------------------------------------------------------------------------------
+Hệ quản trị CSDL: SQLite (file attendance.db).
+Quản lý thực thể: SQLAlchemy ORM.
+
+DANH SÁCH BẢNG VÀ CỘT:
+
+1. teachers (Giảng viên)
+   - id (VARCHAR, PK): Mã giảng viên (VD: GV001)
+   - name (VARCHAR): Họ tên giảng viên
+   - password_hash (VARCHAR): Mật khẩu băm bcrypt
+
+2. classes (Lớp học)
+   - id (VARCHAR, PK): Mã lớp (VD: CS101)
+   - name (VARCHAR): Tên môn học
+   - teacher_id (VARCHAR, FK -> teachers.id): Giảng viên phụ trách
+
+3. students (Sinh viên)
+   - mssv (VARCHAR, PK): Mã số sinh viên (VD: 20210001)
+   - name (VARCHAR): Họ tên sinh viên
+
+4. class_students (Bảng trung gian N-N giữa Lớp và Sinh viên)
+   - class_id (VARCHAR, PK, FK -> classes.id)
+   - mssv (VARCHAR, PK, FK -> students.mssv)
+
+5. face_embeddings (Vector đặc trưng khuôn mặt)
+   - id (INTEGER, PK, Autoincrement)
+   - mssv (VARCHAR, FK -> students.mssv)
+   - encoding_json (VARCHAR): Chuỗi JSON mảng số thực 128 chiều
+   - quality_score (FLOAT): Điểm chất lượng ảnh khi đăng ký
+   * Lưu tối đa 3 vector/sinh viên (chính diện, góc nghiêng, ánh sáng khác nhau).
+
+6. attendance_records (Lịch sử điểm danh)
+   - id (INTEGER, PK, Autoincrement)
+   - mssv (VARCHAR, FK -> students.mssv): Sinh viên điểm danh
+   - class_id (VARCHAR, FK -> classes.id): Lớp học điểm danh
+   - attendance_date (DATE): Ngày điểm danh theo giờ VN
+   - timestamp (DATETIME): Thời gian điểm danh UTC
+   - status (VARCHAR): Trạng thái (SUCCESS, SPOOF_DETECTED, ...)
+   - face_distance (FLOAT): Sai số nhận diện khuôn mặt
+   - liveness_score (FLOAT): Điểm người thật
+   - spoof_type (VARCHAR): Chi tiết gian lận nếu có
+   * RÀNG BUỘC DUY NHẤT (Chống điểm danh lặp và Race Condition):
+     CONSTRAINT uq_attendance_per_day UNIQUE (mssv, class_id, attendance_date)
+     Đảm bảo mỗi sinh viên chỉ được ghi nhận điểm danh 1 lần/ngày cho mỗi lớp học.
+
+
+5. CẤU TRÚC THƯ MỤC VÀ HƯỚNG DẪN CHẠY
+--------------------------------------------------------------------------------
+FacialRecognition/
+├── attendance.db                      # CSDL SQLite cấp ngoài
+├── FacialRecognition/
+│   ├── run_all.py                     # Script chạy toàn bộ dự án
+│   ├── prepare_dataset.py             # Script xử lý dữ liệu huấn luyện Liveness
+│   ├── generate_model.py              # Script tạo file trọng số khởi tạo
+│   ├── archive/                       # Dữ liệu ảnh/video chống giả mạo mẫu
+│   ├── backend/                       # MÃ NGUỒN BACKEND
+│   │   ├── main.py                    # Khởi tạo App, định tuyến toàn bộ API
+│   │   ├── database.py                # Kết nối SQLite & Session Dependency
+│   │   ├── models.py                  # Định nghĩa ORM Database Models
+│   │   ├── schemas.py                 # Pydantic Schemas
+│   │   ├── security.py                # Xử lý mật khẩu bcrypt & JWT Token
+│   │   ├── seed.py                    # Khởi tạo dữ liệu mẫu GV001 & CS101
+│   │   ├── attendance.db              # Database SQLite hoạt động chính
+│   │   └── ai_service/                # DỊCH VỤ XỬ LÝ AI
+│   │       ├── face_engine.py         # Pipeline CLAHE, HOG & 128-d Vector
+│   │       ├── liveness.py            # Chống gian lận quang học & LivenessCNN
+│   │       ├── motion_liveness.py     # Chống gian lận động lực học (EAR + 3D)
+│   │       ├── train_model.py         # Huấn luyện PyTorch LivenessCNN
+│   │       └── liveness_model.pth     # File trọng số PyTorch
+│   └── frontend/                      # MÃ NGUỒN FRONTEND
+│       ├── package.json               # Cấu hình thư viện React, Vite, Oxlint
+│       ├── vite.config.js             # Cấu hình Vite
+│       └── src/
+│           ├── main.jsx               # Entry point ứng dụng React
+│           ├── App.jsx                # Router điều hướng trạng thái phiên
+│           ├── LoginPage.jsx          # Màn hình đăng nhập Giảng viên
+│           ├── DashboardPage.jsx      # Màn hình chọn lớp & điều khiển
+│           ├── KioskPage.jsx          # Màn hình Kiosk điểm danh thời gian thực
+│           ├── EnrollModal.jsx        # Hộp thoại đăng ký khuôn mặt mới
+│           ├── StudentManageModal.jsx # Quản lý danh sách & Xóa khuôn mặt
+│           └── index.css              # Giao diện Dark theme chuyên nghiệp
+
+LỆNH CHẠY HỆ THỐNG:
+python FacialRecognition\run_all.py
+
+Tài khoản mặc định: GV001 / 123456
+Giao diện Kiosk: http://localhost:5173
+Swagger API Docs: http://127.0.0.1:8000/docs
+================================================================================
