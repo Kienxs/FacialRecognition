@@ -1,4 +1,6 @@
 import { useState } from "react";
+import EnrollModal from "./EnrollModal.jsx";
+import StudentManageModal from "./StudentManageModal.jsx";
 
 // ── Mock data ──────────────────────────────────────────────
 const MOCK_CLASSES = [
@@ -10,6 +12,8 @@ const MOCK_CLASSES = [
 // ── Component ──────────────────────────────────────────────
 export default function DashboardPage({ teacher, onLogout, onStartSession }) {
   const [confirmClass, setConfirmClass] = useState(null);
+  const [showEnroll, setShowEnroll] = useState(false);
+  const [showManage, setShowManage] = useState(false);
 
   function handleCardClick(cls) {
     setConfirmClass(cls);
@@ -33,10 +37,42 @@ export default function DashboardPage({ teacher, onLogout, onStartSession }) {
               <div style={styles.teacherId}>{teacher.id}</div>
             </div>
           </div>
-          <button type="button" className="btn btn-ghost" onClick={onLogout}>
-            Đăng xuất
-          </button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ padding: "8px 14px", fontSize: 13, border: "1px solid var(--border)" }}
+              onClick={() => setShowManage(true)}
+            >
+              👥 Quản lý & Xóa mặt
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ padding: "8px 14px", fontSize: 13 }}
+              onClick={() => setShowEnroll(true)}
+            >
+              📸 Đăng ký khuôn mặt mới
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onLogout}>
+              Đăng xuất
+            </button>
+          </div>
         </header>
+
+        {showEnroll && (
+          <EnrollModal
+            teacher={teacher}
+            onClose={() => setShowEnroll(false)}
+          />
+        )}
+
+        {showManage && (
+          <StudentManageModal
+            teacher={teacher}
+            onClose={() => setShowManage(false)}
+          />
+        )}
 
         {/* Title */}
         <div style={styles.sectionHeader}>
@@ -139,42 +175,57 @@ const styles = {
     gap: 12,
   },
   avatar: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: "50%",
-    background: "linear-gradient(135deg, var(--accent), #8b5cf6)",
+    backgroundColor: "var(--primary-muted)",
+    color: "var(--primary)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "white",
-    fontSize: 18,
     fontWeight: 700,
-    boxShadow: "0 0 16px var(--accent-glow)",
+    fontSize: 16,
   },
-  teacherName: { fontWeight: 600, fontSize: 15 },
-  teacherId: { fontSize: 13, color: "var(--text-muted)" },
-  sectionHeader: { display: "flex", flexDirection: "column", gap: 4 },
-  pageTitle: { fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em", margin: 0 },
-  pageSubtitle: { fontSize: 15, color: "var(--text-muted)", margin: 0 },
-
+  teacherName: {
+    fontSize: 15,
+    fontWeight: 600,
+  },
+  teacherId: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+  },
+  sectionHeader: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  pageTitle: {
+    fontSize: 22,
+    fontWeight: 700,
+    margin: 0,
+  },
+  pageSubtitle: {
+    fontSize: 14,
+    color: "var(--text-secondary)",
+    margin: 0,
+  },
   classGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
     gap: 16,
   },
   classCard: {
+    cursor: "pointer",
+    textAlign: "left",
     display: "flex",
     flexDirection: "column",
     gap: 10,
-    padding: 20,
-    cursor: "pointer",
-    textAlign: "left",
-    transition: "all 250ms ease",
-    border: "1px solid var(--border)",
+    padding: 18,
+    transition: "border-color 0.15s, transform 0.15s",
   },
   classCardSelected: {
-    borderColor: "var(--accent)",
-    boxShadow: "0 0 0 2px var(--accent-glow), var(--shadow-glow)",
+    borderColor: "var(--primary)",
+    boxShadow: "0 0 0 1px var(--primary)",
   },
   classCardTop: {
     display: "flex",
@@ -182,32 +233,35 @@ const styles = {
     alignItems: "center",
   },
   studentCount: {
-    display: "inline-flex",
+    display: "flex",
     alignItems: "center",
     gap: 4,
-    fontSize: 13,
+    fontSize: 12,
     color: "var(--text-muted)",
   },
-  className: { fontSize: 17, fontWeight: 700, margin: 0 },
+  className: {
+    fontSize: 16,
+    fontWeight: 600,
+    margin: 0,
+  },
   classMeta: {
-    display: "flex",
-    gap: 6,
-    fontSize: 13,
-    color: "var(--text-muted)",
+    fontSize: 12,
+    color: "var(--text-secondary)",
   },
-
   confirmBar: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 16,
-    padding: "16px 20px",
-    background: "var(--bg-card)",
-    backdropFilter: "blur(16px)",
+    backgroundColor: "var(--card-bg)",
     border: "1px solid var(--border)",
     borderRadius: "var(--radius-md)",
-    flexWrap: "wrap",
+    padding: "14px 20px",
   },
-  confirmText: { fontSize: 15, color: "var(--text-secondary)" },
-  confirmActions: { display: "flex", gap: 10 },
+  confirmText: {
+    fontSize: 14,
+  },
+  confirmActions: {
+    display: "flex",
+    gap: 10,
+  },
 };
