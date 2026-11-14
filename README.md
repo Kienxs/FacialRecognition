@@ -144,6 +144,7 @@ FacialRecognition/
 │   ├── package.json                # Cấu hình phụ thuộc Node.js (React 19, basic-ssl, Vite)
 │   └── vite.config.js              # Cấu hình Vite Dev Server, Basic SSL và Proxy `/api`
 │
+├── run_all.py                      # Script tự động khởi chạy cả Backend và Frontend chỉ bằng 1 lệnh
 ├── README.md                       # Tài liệu hướng dẫn sử dụng và triển khai dự án
 └── .gitignore                      # Cấu hình loại trừ tệp nhị phân và môi trường ảo
 ```
@@ -160,72 +161,81 @@ FacialRecognition/
 
 ---
 
-### 2. Cài đặt và khởi chạy Backend
+### 2. Cài đặt các gói phụ thuộc (Thực hiện lần đầu tiên)
 
-Mở terminal và di chuyển vào thư mục `backend/`:
-
-```bash
+#### Bước 2.1: Cài đặt Backend
+Mở terminal tại thư mục gốc dự án:
+```powershell
+# Di chuyển vào backend
 cd backend
-```
 
-#### Bước 2.1: Tạo và kích hoạt môi trường ảo (Virtual Environment)
-* Trên **Windows (PowerShell)**:
-  ```powershell
-  python -m venv venv
-  .\venv\Scripts\Activate.ps1
-  ```
-* Trên **Linux / macOS**:
-  ```bash
-  python3 -m venv venv
-  source venv/bin/activate
-  ```
+# Tạo và kích hoạt môi trường ảo
+python -m venv venv
+.\venv\Scripts\Activate.ps1    # Trên Windows PowerShell
+# source venv/bin/activate     # Trên Linux / macOS
 
-#### Bước 2.2: Cài đặt các gói phụ thuộc
-```bash
+# Nâng cấp pip và cài đặt thư viện
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
-*(Nếu cài đặt `dlib` trên Windows gặp lỗi, bạn có thể cài bản dựng sẵn: `pip install dlib-bin`)*.
+*(Nếu cài đặt `dlib` trên Windows gặp lỗi biên dịch, bạn có thể cài bản dựng sẵn siêu nhanh: `pip install dlib-bin`)*.
 
-#### Bước 2.3: Khởi tạo dữ liệu mẫu ban đầu
-Chạy script sau để tạo tài khoản giảng viên và dữ liệu sinh viên mẫu vào `attendance.db`:
-```bash
-python seed.py
-```
-
-#### Bước 2.4: Khởi chạy máy chủ Backend
-```bash
-python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
-```
-* API Backend sẽ chạy tại: [http://127.0.0.1:8000](http://127.0.0.1:8000)
-* Tài liệu Swagger API tương tác: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-
----
-
-### 3. Cài đặt và khởi chạy Frontend
-
-Mở một cửa sổ terminal mới và di chuyển vào thư mục `frontend/`:
-
-```bash
+#### Bước 2.2: Cài đặt Frontend
+Mở một cửa sổ terminal mới:
+```powershell
+# Di chuyển vào frontend
 cd frontend
-```
 
-#### Bước 3.1: Cài đặt các gói npm
-```bash
+# Cài đặt các gói npm
 npm install
 ```
 
-#### Bước 3.2: Khởi chạy Vite Dev Server
-```bash
-npm run dev
+---
+
+### 3. Khởi chạy ứng dụng
+
+#### ⚡ Cách 1: Khởi chạy nhanh 1 chạm với `run_all.py` (Khuyến nghị)
+
+Tại thư mục gốc dự án (`FacialRecognition/`), bạn chỉ cần chạy một lệnh duy nhất:
+
+```powershell
+python run_all.py
 ```
 
-Sau khi chạy lệnh, màn hình sẽ hiển thị các liên kết truy cập:
-* **Truy cập nội bộ (Localhost)**: `https://localhost:5173`
-* **Truy cập qua mạng LAN (Điện thoại / Tablet cùng Wi-Fi)**: `https://<IP_MAY_TINH>:5173`
-
 > [!TIP]
-> Do sử dụng chứng chỉ tự ký (`@vitejs/plugin-basic-ssl`) để kích hoạt quyền truy cập Camera/HTTPS trên mạng LAN, trình duyệt trên điện thoại hoặc máy tính có thể hiển thị cảnh báo bảo mật ban đầu. Hãy bấm **"Nâng cao" (Advanced) → "Tiếp tục truy cập" (Proceed)** để vào giao diện.
+> **Điểm nổi bật của `run_all.py`:**
+> - **Chống xung đột cổng mạng**: Tự động phát hiện và giải phóng cổng `8000` nếu có tiến trình chạy ngầm cũ đang chiếm giữ, triệt tiêu hoàn toàn lỗi `[WinError 10013]`.
+> - **Tự động nhận diện môi trường ảo**: Tự động phát hiện và sử dụng `backend/venv/Scripts/python.exe` mà không cần bạn phải nhớ kích hoạt thủ công.
+> - **Khởi tạo dữ liệu mẫu**: Tự động chạy `seed.py` để tạo tài khoản giảng viên `GV001` và lớp học mẫu `CS101`.
+> - **Bật đồng thời 2 tiến trình**: Mở Backend FastAPI tại `http://127.0.0.1:8000` và Frontend Vite tại `https://localhost:5173`.
+> - **Tự động mở trình duyệt**: Sau 3 giây khi hệ thống sẵn sàng, trình duyệt sẽ tự động mở giao diện điểm danh.
+> - **Dọn dẹp an toàn**: Nhấn `Ctrl + C` tại Terminal để đóng sạch sẽ cả Backend và Frontend cùng lúc.
+
+---
+
+#### 🛠️ Cách 2: Khởi chạy thủ công từng phần (Dành cho việc debug riêng)
+
+Nếu bạn muốn theo dõi log chi tiết của từng dịch vụ trong các cửa sổ riêng biệt:
+
+* **Cửa sổ 1 - Chạy Backend FastAPI:**
+  ```powershell
+  cd backend
+  .\venv\Scripts\Activate.ps1
+  python seed.py                                                    # Khởi tạo dữ liệu mẫu
+  python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload  # Chạy server API
+  ```
+  * Swagger Docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+* **Cửa sổ 2 - Chạy Frontend Vite:**
+  ```powershell
+  cd frontend
+  npm run dev
+  ```
+  * Truy cập Kiosk tại máy: `https://localhost:5173`
+  * Truy cập từ điện thoại / tablet qua Wi-Fi: `https://<IP_MAY_TINH>:5173`
+
+> [!NOTE]
+> Do Vite sử dụng chứng chỉ HTTPS tự ký (`@vitejs/plugin-basic-ssl`) để cấp quyền Camera/WebRTC trên mạng LAN, trình duyệt sẽ hiển thị cảnh báo chứng chỉ ở lần đầu truy cập. Bạn chỉ cần chọn **"Nâng cao" (Advanced) → "Tiếp tục truy cập" (Proceed)**.
 
 ---
 
