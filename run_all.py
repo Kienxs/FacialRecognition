@@ -18,7 +18,8 @@ def main():
     root_dir = get_project_root()
     backend_dir = os.path.join(root_dir, "backend")
     frontend_dir = os.path.join(root_dir, "frontend")
-    python_exe = sys.executable
+    venv_python = os.path.join(backend_dir, "venv", "Scripts", "python.exe") if os.name == "nt" else os.path.join(backend_dir, "venv", "bin", "python")
+    python_exe = venv_python if os.path.exists(venv_python) else sys.executable
     npm_cmd = "npm.cmd" if os.name == "nt" else "npm"
 
     print("=" * 65)
